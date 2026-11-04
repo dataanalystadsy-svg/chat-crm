@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Analisis Chat CRM</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{--bg:#f6f7fb;--sf:#fff;--tx:#14213d;--mu:#6b7490;--bd:#d9deec;--ac:#1d4ed8;--hl:#fde68a;--ok:#dbeafe;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1424;--sf:#171f36;--tx:#e8ecf8;--mu:#97a1c0;--bd:#2c3558;--ac:#6d9bff;--hl:#5b4b0b;--ok:#1e3a6e;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0e1424;--sf:#171f36;--tx:#e8ecf8;--mu:#97a1c0;--bd:#2c3558;--ac:#6d9bff;--hl:#5b4b0b;--ok:#1e3a6e;color-scheme:dark}
+*{box-sizing:border-box}html,body{margin:0}body{background:var(--bg);color:var(--tx);font:14px/1.5 "Segoe UI",Roboto,Arial,sans-serif;padding:20px max(16px,env(safe-area-inset-left,0px)) 40px}
+main{max-width:1000px;margin:auto}h1{font-size:24px;margin:0 0 4px}h2{font-size:17px;margin:26px 0 8px}.mu{color:var(--mu)}
+.card{background:var(--sf);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:10px}
+#drop{border:2px dashed var(--bd);text-align:center;padding:24px;cursor:pointer}#drop.on{border-color:var(--ac);background:var(--ok)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px}
+button,input[type=text]{font:inherit;border:1px solid var(--bd);background:var(--sf);color:var(--tx);border-radius:8px;padding:6px 12px}
+button{cursor:pointer}button.p{background:var(--ac);border-color:var(--ac);color:#fff}
+details.cat{background:var(--sf);border:1px solid var(--bd);border-radius:12px;margin-bottom:8px}details.cat>summary{padding:10px 14px;cursor:pointer;font-weight:600}
+.w{overflow-x:auto}table{border-collapse:collapse;width:100%}th,td{padding:6px 10px;border-top:1px solid var(--bd);text-align:left;vertical-align:top}th{font-size:12px;color:var(--mu)}td.c{text-align:center}
+.q{margin:2px 0 2px 14px;font-size:13px;color:var(--mu)}.q i{color:var(--tx)}.lb{background:var(--hl);border-radius:6px;padding:1px 7px;font-size:12px;font-weight:600}
+.bw{background:var(--bd);border-radius:5px;height:10px;min-width:90px}.bar{height:10px;border-radius:5px;background:var(--ac)}.cr{display:flex;align-items:center;gap:10px;margin:6px 0}.cr>span{width:270px;font-size:13px}.cr>b{width:42px;text-align:right}.nm{font-weight:700;font-size:15px;width:210px}.ct{font-size:11px;letter-spacing:.04em;color:var(--ac);font-weight:700;margin-top:10px}</style></head><body><main>
+<h1>Analisis Chat CRM</h1>
+<div class="mu">Unggah chat WhatsApp (.txt atau .zip, boleh banyak sekaligus). Diproses di browser kamu; tidak ada data yang dikirim ke server.</div>
+<div class="card" style="margin-top:14px"><div id="drop"><b>Tarik file ke sini</b> atau klik untuk memilih<br><span class="mu">Ekspor WhatsApp Android tanpa media. Satu file = satu customer. Nama diambil dari nama file.</span></div>
+<input id="fi" type="file" multiple accept=".txt,.zip" hidden>
+<div class="row"><label>Nama CS (opsional, otomatis terdeteksi): <input id="cs" type="text" placeholder="mis. Yuni, Dina" size="14"></label><button id="rn">Analisis ulang</button><button id="rt">Coba lagi yang gagal</button><button id="cl">Hapus semua</button><span id="st" class="mu"></span></div><div id="md" class="mu" style="margin-top:6px;font-size:13px"></div></div>
+<div id="out" hidden>
+<div class="row"><button class="p" id="xl">Unduh Excel</button></div>
+<h2>Rekap per kategori</h2><div id="rk"></div>
+<h2>Per customer <span class="mu" style="font-weight:400">— nama bisa diedit</span></h2><div id="ch"></div>
+<p class="mu">Poin inti disusun Claude dari isi chat dan dipetakan ke label tetap, jadi persentase dihitung dari jumlah customer yang punya label itu. Tetap baca ringkasannya sebelum dipakai di slide. Jumlah order dan interval adalah perkiraan dari pesan resi CS dan pesan order customer.</p>
+</div></main>
+<script>
+const CAT=[["PRODUCT INSIGHT","Pengalaman, penggunaan, persepsi produk"],["CUSTOMER INSIGHT","Karakter, kebiasaan, kebutuhan, perilaku"],["MARKETING INSIGHT","Respons promo, bonus, efektivitas penawaran"],["PRICE & VALUE INSIGHT","Persepsi harga dan nilai"],["PURCHASE BEHAVIOR","Pola beli, repeat, interval, ukuran pesanan"],["CUSTOMER EXPERIENCE","Pengiriman, COD, respons CS, kendala"],["CUSTOMER FEEDBACK & OBJECTION","Pertanyaan, keraguan, keluhan, kebutuhan info"],["RETENTION & GROWTH OPPORTUNITY","Loyalitas, upselling, cross-selling, retensi"]];
+const LBL=[
+[0,"Frekuensi & cara konsumsi","berapa kali sehari/seminggu, kapan diminum, dicampur apa"],
+[0,"Rasa & kejenuhan","jenuh atau cocok dengan rasa dan penyebabnya (misal dicampur makanan lain), cara mengatasi"],
+[0,"Manfaat yang dirasakan","perubahan badan/aktivitas yang dirasakan"],
+[0,"Keluhan produk","kualitas, kemasan, efek tidak cocok"],
+[1,"Konsumen sebenarnya","siapa yang minum (diri sendiri, orang tua, pasangan), usia/kondisi bila disebut"],
+[1,"Latar belakang & aktivitas","pekerjaan, kegiatan, situasi hidup"],
+[1,"Gaya komunikasi","singkat/transaksional/akrab, bahasa daerah, preferensi komunikasi"],
+[1,"Sikap terhadap tawaran CS","tak perlu ditawari, merespons saat stok menipis, dll"],
+[2,"Respons promo & bonus","tanggapan atas promo, paket, potongan, bonus"],
+[2,"Respons broadcast, check-in & voucher","tanggapan atas media/broadcast, pertanyaan check-in, voucher ulang tahun"],
+[2,"Nilai bonus di mata customer","bonus dianggap berguna atau tidak"],
+[3,"Menyadari kenaikan harga","mengomentari harga naik, dan reaksinya"],
+[3,"Bingung harga berbeda","angka harga dari CS tidak konsisten"],
+[3,"Menawar / minta lebih murah","negosiasi harga"],
+[3,"Menerima harga","tetap membeli meski harga naik"],
+[3,"Keberatan ongkir / biaya","ongkir, admin, total bayar"],
+[4,"Pola repeat order","seberapa sering, pemicu reorder"],
+[4,"Jumlah & ukuran pesanan","jumlah box per order dan perubahannya"],
+[4,"Sisa stok saat reorder","sisa box di rumah saat order atau ditanya CS"],
+[4,"Rencana pembelian berikutnya","kapan berniat beli lagi"],
+[5,"Kecepatan pengiriman","paket cepat/lambat/belum sampai"],
+[5,"COD & pembayaran","metode bayar dan kendalanya"],
+[5,"Respons CS","kecepatan/kualitas balasan CS menurut customer atau terlihat di chat"],
+[5,"Kendala transaksi / alamat","salah pesanan, alamat, pembatalan, retur"],
+[6,"Pertanyaan customer","hal yang ditanyakan customer"],
+[6,"Keraguan / menunda","ragu, menunda, tidak jadi beli"],
+[6,"Keluhan & keberatan","komplain atau keberatan"],
+[6,"Kebutuhan informasi","info yang dicari (manfaat, bonus, cara minum, harga)"],
+[7,"Potensi loyalitas","tanda loyal: repeat konsisten, apresiasi, janji beli lagi"],
+[7,"Peluang upselling","bisa naik ke paket lebih besar"],
+[7,"Peluang cross-selling / bonus","produk atau bonus tambahan yang relevan"],
+[7,"Risiko pindah / lapsed","ancam pindah atau lama tak order"],
+[7,"Rekomendasi ke orang lain","mengajak atau merekomendasikan"],
+[7,"Peluang program retensi","reminder, voucher, paket langganan yang cocok"]];
+const LB={};LBL.forEach(a=>LB[a[1]]=a[0]);
+const PR=`Analisis chat WhatsApp berikut antara CS (baris "CS") dan satu customer (baris "C") produk susu kambing etawa PrimaGold. Ambil poin inti dari apa yang DIKATAKAN atau DILAKUKAN customer; baris CS hanya konteks. Pilih hanya label yang benar-benar didukung chat, maksimal satu entri per label. Isi tiap entri dengan ringkasan spesifik dalam kata-katamu sendiri (maksimal 25 kata) yang memuat fakta konkret (angka, frekuensi, bahan campuran, alasan, tanggal). Jangan menyalin pesan mentah, jangan menyebut nama atau alamat, jangan mengarang.
+Contoh ringkasan yang baik: label "Frekuensi & cara konsumsi" → "Minum 1-2x sehari, dicampur Energen"; label "Rasa & kejenuhan" → "Mulai jenuh rasa aslinya, mengakali dengan mencampur Energen".
+Daftar label (kategori | label | panduan isi):
+`+LBL.map(a=>(a[0]+1)+" | "+a[1]+" | "+a[2]).join("\n")+`
+Balas HANYA JSON tanpa teks lain: {"poin":[{"l":"<label persis dari daftar>","d":"<ringkasan>"}]}
+
+CHAT:
+`;
+const $=s=>document.querySelector(s),D=864e5,H=36e5;
+const P=/^(\d\d)\/(\d\d)\/(\d\d) (\d\d)\.(\d\d) - ([^:]+): (.*)$/;
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const mask=t=>t.replace(/\d{6,}/g,"•••").replace(/\s+/g," ").trim().slice(0,160);
+const fmt=d=>d.toLocaleDateString("id-ID",{day:"2-digit",month:"short"});
+function nm(f){let s=f.replace(/\.(txt|zip)$/i,"").replace(/_/g," ").replace(/^Chat WhatsApp dengan\s*/i,"");
+ s=/\d/.test(s)?s.replace(/^.*\d/,""):s.replace(/\b(RO|LOYAL|PRIMA)\b/gi,"");
+ s=s.replace(/[^\p{L}\s.]/gu," ").replace(/\s+/g," ").trim();return s?s[0].toUpperCase()+s.slice(1):"Customer"}
+let raws=[],chats=[];
+function put(c,k,l,d){const key=k+"|"+l,o=c.it[key];if(o)o.qs[0].q+=" · "+d;else c.it[key]={k,l,n:1,qs:[{q:d,t:null}]}}
+function who(m,f,ov){const ss=[...new Set(m.map(x=>x.s))],n=s=>s.toLowerCase().replace(/[^a-z0-9]/g,""),fn=n(f.replace(/\.(txt|zip)$/i,"").replace(/^Chat[ _]WhatsApp[ _]dengan[ _]?/i,"")),o=(ov||"").split(",").map(s=>s.trim().toLowerCase()).filter(Boolean);
+ if(o.length)return new Set(ss.filter(s=>o.some(v=>s.toLowerCase().includes(v))));
+ let cu=ss.find(s=>fn&&n(s)&&(n(s)==fn||fn.includes(n(s))||n(s).includes(fn)))||ss.find(s=>/^(ro|loyal)\b|\d{2}/i.test(s.trim()));
+ if(!cu&&ss.length>1){const k={};m.forEach(x=>k[x.s]=(k[x.s]||0)+1);cu=[...ss].sort((a,b)=>k[a]-k[b])[0]}
+ return new Set(ss.filter(s=>s!=cu))}
+function analyze(r,cs){
+ const m=[];let cur;
+ for(const l of r.txt.split(/\r?\n/)){const g=P.exec(l);
+  if(g){cur={t:new Date(2000+ +g[3],+g[2]-1,+g[1],+g[4],+g[5]),s:g[6].trim(),x:g[7]};cur.md=/^<Media tidak disertakan>$|^Pesan ini dihapus/.test(cur.x.trim());m.push(cur)}
+  else if(cur)cur.x+=" "+l}
+ const sn=who(m,r.name,cs);m.forEach(x=>x.cs=sn.has(x.s));
+ const cu=m.filter(x=>!x.cs&&!x.md),rs=m.filter(x=>x.cs&&/resi/i.test(x.x));
+ const od=[...rs,...cu.filter(x=>/beli|order|kirimi|pesan lagi|\d+ ?(box|dos|bok)/i.test(x.x))].map(x=>x.t).sort((a,b)=>a-b),ord=[];
+ od.forEach(d=>{if(!ord.length||(d-ord[ord.length-1])/D>=4)ord.push(d)});
+ const iv=ord.slice(1).map((d,k)=>(d-ord[k])/D),ia=iv.length?iv.reduce((a,b)=>a+b)/iv.length:null;
+ const nums=[];[...cu,...rs].forEach(x=>{for(const g of x.x.matchAll(/(\d{1,2})\s*(?:box|dos|bok|kotak)\b/gi)){const n=+g[1];if(n>0&&n<=30)nums.push(n)}});
+ const max=nums.length?Math.max(...nums):0,cnt={};nums.forEach(n=>cnt[n]=(cnt[n]||0)+1);
+ const mode=nums.length?+Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a])[0]:null;
+ let seg="4 box";if(max>=8)seg=nums.filter(n=>n<=4).length>nums.filter(n=>n>=8).length?"Naik 4→8 box":"Paket 8-10 box";
+ const c={name:nm(r.name),file:r.name,it:{},seg,nOrd:ord.length,max,ia,hpb:ia&&mode?ia/mode:null,n:cu.length,tx:m.filter(x=>!x.md).map(x=>(x.cs?"CS ":"C ")+x.t.toLocaleDateString("id-ID",{day:"2-digit",month:"2-digit"})+": "+x.x.replace(/\d{6,}/g,"•••").replace(/\s+/g," ").trim().slice(0,400)).join("\n").slice(0,16000)};
+ const L=cu.map(x=>x.x.length).sort((a,b)=>a-b),med=L.length?L[L.length>>1]:0;
+ if(L.length>3&&med<30)put(c,1,"Gaya komunikasi","Median pesan "+med+" karakter dari "+L.length+" pesan",null);
+ if(ord.length>=3)put(c,7,"Potensi loyalitas",ord.length+" order dalam periode chat",null);
+ if(ia)put(c,4,"Pola repeat order","Rata-rata "+ia.toFixed(0)+" hari antar order"+(mode?" ("+mode+" box per order)":""),null);
+ if(seg=="Naik 4→8 box")put(c,7,"Peluang upselling","Box terbesar "+max,null);
+ if(seg=="Paket 8-10 box")put(c,4,"Jumlah & ukuran pesanan","Box terbesar "+max,null);
+ for(let k=0;k<m.length;k++){const x=m[k];
+  if(x.cs&&x.md&&!m.slice(0,k).some(y=>!y.cs&&x.t-y.t<2*H)){const n=m.slice(k+1).find(y=>!y.cs&&!y.md);
+   if(n&&n.t-x.t<3*H){put(c,2,"Respons broadcast, check-in & voucher","Media "+fmt(x.t)+", dibalas "+Math.round((n.t-x.t)/6e4)+" menit",null);break}}}
+ for(let k=0;k<m.length;k++){const x=m[k];
+  if(!x.cs&&!x.md&&/box|dos|bok|order|beli|kirim/i.test(x.x)){const n=m.slice(k+1).find(y=>y.cs);if(n&&n.t-x.t>2*D){put(c,5,"Respons CS","Pesan "+fmt(x.t)+" dibalas "+Math.round((n.t-x.t)/D)+" hari kemudian",null);break}}}
+ let tr=0;for(let k=m.length-1;k>=0&&m[k].cs;k--)tr++;
+ const lc=cu.length?cu[cu.length-1].t:null;
+ if(tr>=3&&lc&&m[m.length-1].t-lc>60*D)put(c,7,"Risiko pindah / lapsed",tr+" pesan CS terakhir tak dibalas, "+Math.round((m[m.length-1].t-lc)/D)+" hari",null);
+ return c}
+const PROXY="PASTE_URL_WORKER_DI_SINI";let AK="";
+async function getSm(){
+ if(window.claude){try{return await window.claude.use("sample")}catch(e){}}
+ if(!/^https?:/.test(PROXY))return null;
+ AK=AK||prompt("Masukkan kata sandi akses:")||"";if(!AK)return null;
+ return{json:async p=>{let r;try{r=await fetch(PROXY,{method:"POST",headers:{"Content-Type":"application/json","X-Access-Key":AK},body:JSON.stringify({prompt:p})})}catch(e){throw{code:"network"}}
+  if(r.status==401){AK="";throw{code:"not_granted"}}if(r.status==429)throw{code:"rate_limited"};if(!r.ok)throw{code:"error"};
+  const t=(await r.json()).text,a=t.indexOf("{"),b=t.lastIndexOf("}");return JSON.parse(t.slice(a,b+1))}}}
+let gen=0,busy="";
+async function run(rt){const my=++gen;if(!rt)chats=raws.map(r=>analyze(r,$("#cs").value));busy="";render();
+ const sm=await getSm();
+ $("#md").textContent=!chats.length?"":sm?(window.claude?"Poin inti disusun oleh Claude dari isi chat; isi chat dikirim ke Claude lewat akun kamu.":"Poin inti disusun oleh Claude dari isi chat; isi chat dikirim ke Claude API lewat server proxy milik pengelola halaman."):"Mode statistik saja: poin inti per kategori memakai Claude, jadi hanya jalan bila halaman dibuka lewat link claude.ai atau setelah proxy dipasang (lihat PANDUAN).";
+ if(!sm)return;
+ const q=chats.filter(c=>!c.done);let i=0,dn=0,stop="";const codes=new Set();
+ const w=async()=>{while(i<q.length&&my==gen){const c=q[i++];
+  try{const r=await sm.json(PR+c.tx);(Array.isArray(r)?r:r.poin||[]).forEach(p=>{if(p&&LB[p.l]!=null&&p.d)put(c,LB[p.l],p.l,String(p.d).slice(0,240))});c.done=1;c.err=0}
+  catch(e){c.err=1;codes.add(e&&e.code||"error");if(e&&(e.code=="not_granted"||e.code=="rate_limited")){i=1e9;stop=e.code=="not_granted"?"Izin/kata sandi ditolak, hanya statistik yang tampil.":"Batas pemakaian Claude tercapai atau terlalu banyak permintaan."}}
+  dn++;if(my==gen){busy=dn<q.length&&!stop?"Claude menyusun poin inti: "+dn+"/"+q.length:"";render()}}};
+ await Promise.all([w(),w()]);
+ if(my==gen){const f=chats.filter(c=>!c.done).length;busy=f?(stop||"")+" "+f+" dari "+chats.length+" chat belum berhasil disusun poin intinya ("+[...codes].join(", ")+"), jadi persentase di bawah belum lengkap. Klik “Coba lagi yang gagal” setelah kuota kembali.":"";render()}}
+function agg(){const a={};chats.forEach(c=>{const u={};Object.values(c.it).forEach(o=>{const q=o.qs.find(x=>!u[o.k+"|"+x.q])||o.qs[0];u[o.k+"|"+q.q]=1;const k=o.k+"|"+o.l;(a[k]=a[k]||{k:o.k,l:o.l,who:[]}).who.push({n:c.name,q})})});return Object.values(a)}
+const qh=o=>o.q?`“${esc(o.q)}”`:"";
+function render(){
+ $("#out").hidden=!chats.length;if(!chats.length)return;
+ const N=chats.length,A=agg();$("#st").textContent=busy||N+" customer dianalisis";
+ const cp=CAT.map((_,i)=>chats.filter(c=>Object.values(c.it).some(o=>o.k==i)).length);
+ const ch=`<div class=card><b>Persentase customer per kategori</b> <span class=mu>(customer yang punya minimal 1 poin inti di kategori itu)</span>`+CAT.map((cat,i)=>`<div class=cr><span>${i+1}. ${cat[0]}</span><div class=bw style="flex:1"><div class=bar style="width:${cp[i]/N*100}%"></div></div><b>${Math.round(cp[i]/N*100)}%</b></div>`).join("")+`</div>`;
+ $("#rk").innerHTML=ch+CAT.map((cat,i)=>{const rows=A.filter(a=>a.k==i).sort((a,b)=>b.who.length-a.who.length),cs=new Set(rows.flatMap(r=>r.who.map(w=>w.n)));
+  return `<details class=cat ${i<2?"open":""}><summary>${i+1}. ${cat[0]} <span class=mu style="font-weight:400">· ${rows.length} poin · ${cs.size} dari ${N} customer (${Math.round(cs.size/N*100)}%)<br>${cat[1]}</span></summary><div class=w><table><tr><th>Poin inti</th><th>% customer</th><th>Ringkasan per customer</th></tr>`+
+  (rows.map(r=>{const p=Math.round(r.who.length/N*100);return `<tr><td><span class=lb>${esc(r.l)}</span></td><td style="min-width:130px"><b>${p}%</b> <span class=mu>(${r.who.length}/${N})</span><div class=bw><div class=bar style="width:${p}%"></div></div></td><td>${r.who.map(w=>`<div class=q style="margin-left:0"><b>${esc(w.n)}</b>: <i>${w.q.t?"“"+esc(w.q.q)+"”":esc(w.q.q)}</i></div>`).join("")}</td></tr>`}).join("")||"<tr><td colspan=3 class=mu>Belum ada poin.</td></tr>")+`</table></div></details>`}).join("");
+ $("#ch").innerHTML=chats.map((c,i)=>{
+  let h=`<div class=card><div class=row style="margin:0"><input type=text class=nm data-n=${i} value="${esc(c.name)}"><span class=mu>${c.seg} · ${c.nOrd} order · box maks ${c.max||"-"} · interval ${c.ia?c.ia.toFixed(0)+" hari":"-"}${c.hpb?" · "+c.hpb.toFixed(1)+" hari/box":""} · ${c.n} pesan customer${c.err?" · <b>poin Claude gagal diproses</b>":""}</span><button data-t=${i}>${c.open?"Tutup":"Lihat poin inti"}</button></div>`;
+  if(c.open)CAT.forEach((cat,k)=>{const os=Object.values(c.it).filter(o=>o.k==k);if(!os.length)return;
+   h+=`<div class=ct>${cat[0]}</div>`+os.map(o=>`<div><span class=lb>${esc(o.l)}</span>${o.n>1?` <span class=mu>${o.n}×</span>`:""}</div>`+o.qs.map(q=>`<div class=q>${q.t?`<span class=mu>${fmt(q.t)}</span> `:""}<i>${q.t?"“"+esc(q.q)+"”":esc(q.q)}</i></div>`).join("")).join("")});
+  return h+"</div>"}).join("")}
+async function addFiles(files){
+ for(const f of files){
+  if(/\.zip$/i.test(f.name)){const z=await JSZip.loadAsync(f);for(const n of Object.keys(z.files))if(/\.txt$/i.test(n)&&!z.files[n].dir)raws.push({name:n.replace(/^.*\//,""),txt:await z.files[n].async("string")})}
+  else if(/\.txt$/i.test(f.name))raws.push({name:f.name,txt:await f.text()})}
+ const seen=new Set();raws=raws.filter(r=>{const k=r.txt.length+r.txt.slice(0,200);if(seen.has(k))return false;seen.add(k);return true});
+ const old=Object.fromEntries(chats.map(c=>[c.file,c]));run();chats.forEach(c=>{if(old[c.file]){c.name=old[c.file].name;c.open=old[c.file].open}});render()}
+$("#drop").onclick=()=>$("#fi").click();$("#fi").onchange=e=>addFiles([...e.target.files]);
+["dragover","dragenter"].forEach(v=>$("#drop").addEventListener(v,e=>{e.preventDefault();$("#drop").classList.add("on")}));
+["dragleave","drop"].forEach(v=>$("#drop").addEventListener(v,e=>{e.preventDefault();$("#drop").classList.remove("on")}));
+$("#drop").addEventListener("drop",e=>addFiles([...e.dataTransfer.files]));
+$("#rn").onclick=()=>run();$("#rt").onclick=()=>run(1);$("#cl").onclick=()=>{raws=[];chats=[];render();$("#st").textContent=""};
+document.addEventListener("click",e=>{const b=e.target.closest("[data-t]");if(b){const c=chats[b.dataset.t];c.open=!c.open;render()}});
+document.addEventListener("change",e=>{const x=e.target;if(x.dataset.n!=null){chats[x.dataset.n].name=x.value.trim()||"Customer";render()}});
+$("#xl").onclick=()=>{const N=chats.length,A=agg();
+ const s1=[["Nama","Segmen","Jumlah order","Box terbanyak","Interval rata-rata (hari)","Hari per box",...CAT.map(c=>c[0]+" (poin)")]];
+ chats.forEach(c=>s1.push([c.name,c.seg,c.nOrd,c.max||"",c.ia?+c.ia.toFixed(1):"",c.hpb?+c.hpb.toFixed(1):"",...CAT.map((_,k)=>Object.values(c.it).filter(o=>o.k==k).length)]));
+ const s2=[["Nama","Kategori","Poin inti","Jumlah muncul","Tanggal","Ringkasan poin"]];
+ chats.forEach(c=>Object.values(c.it).sort((a,b)=>a.k-b.k).forEach(o=>o.qs.forEach(q=>s2.push([c.name,CAT[o.k][0],o.l,o.n,q.t?fmt(q.t):"",q.q]))));
+ const s3=[["Kategori","Poin inti","Jumlah customer","% customer","Nama customer"]];
+ A.sort((a,b)=>a.k-b.k||b.who.length-a.who.length).forEach(a=>s3.push([CAT[a.k][0],a.l,a.who.length,+(a.who.length/N).toFixed(3),a.who.map(w=>w.n).join(", ")]));
+ const wb=XLSX.utils.book_new();[["Ringkasan_Customer",s1],["Poin_Inti_dan_Kutipan",s2],["Rekap_Kategori",s3]].forEach(([n,a])=>XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(a),n));
+ XLSX.writeFile(wb,"Insight_Chat_CRM.xlsx")};
+</script></body></html>
